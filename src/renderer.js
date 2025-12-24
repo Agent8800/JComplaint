@@ -16,6 +16,33 @@ function show(view) {
 tabRegister.addEventListener("click", () => show("register"));
 tabReports.addEventListener("click", () => show("reports"));
 
+function escapeHtml(s) {
+  return String(s ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function monthToYYYYMM(value) {
+  if (!value) return "";
+  return value.replace("-", "");
+}
+
+function fmtDate(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString();
+}
+
+function badge(status) {
+  const cls = status === "Complete" ? "badge badge--complete" : "badge badge--pending";
+  return `<span class="${cls}">${escapeHtml(status)}</span>`;
+}
+
+// ---------------- Register ----------------
 const form = $("formComplaint");
 const saveMsg = $("saveMsg");
 
@@ -36,33 +63,18 @@ form.addEventListener("submit", async (e) => {
   form.reset();
 });
 
-// Reports
+// ---------------- Reports ----------------
 const monthPick = $("monthPick");
 const statusPick = $("statusPick");
 const locationPick = $("locationPick");
 const btnLoad = $("btnLoad");
-const btnExport = $("btnExport");
+const btnExportXlsx = $("btnExportXlsx");
+const btnExportPdf = $("btnExportPdf");
 const summary = $("summary");
 const reportBody = $("reportBody");
 const reportMsg = $("reportMsg");
 
-function monthToYYYYMM(value) {
-  // input type="month" gives "YYYY-MM"
-  if (!value) return "";
-  return value.replace("-", "");
-}
-
-function fmtDate(iso) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString();
-}
-
-function badge(status) {
-  const cls = status === "Complete" ? "badge badge--complete" : "badge badge--pending";
-  return `<span class="${cls}">${status}</span>`;
-}
+let lastRowsById = new Map();
 
 async function loadReport() {
   reportMsg.textContent = "";
@@ -86,63 +98,137 @@ async function loadReport() {
     return;
   }
 
+  lastRowsById = new Map(res.rows.map(r => [String(r.id), r]));
+
   summary.textContent =
     `Total: ${res.summary.total}   |   Pending: ${res.summary.pending}   |   Complete: ${res.summary.complete}`;
 
   reportBody.innerHTML = res.rows.map(r => {
     const toggleTo = r.status === "Pending" ? "Complete" : "Pending";
+    const problemFull = r.problem || "";
+    const problemShort = problemFull.length > 60 ? problemFull.slice(0, 60) + "..." : problemFull;
+
     return `
       <tr>
-        <td>${r.complaint_no}</td>
-        <td>${r.name}</td>
-        <td>${r.mobile}</td>
-        <td>${r.location}</td>
-        <td>${r.department}</td>
-        <td>${r.product}</td>
-        <td>${r.serial_number}</td>
+        <td>${escapeHtml(r.complaint_no)}</td>
+        <td>${escapeHtml(r.name)}</td>
+        <td>${escapeHtml(r.mobile)}</td>
+        <td>${escapeHtml(r.location)}</td>
+        <td>${escapeHtml(r.department)}</td>
+        <td>${escapeHtml(r.product)}</td>
+        <td>${escapeHtml(r.serial_number)}</td>
+        <td title="${escapeHtml(problemFull)}">${escapeHtml(problemShort)}</td>
         <td>${badge(r.status)}</td>
-        <td>${fmtDate(r.created_at)}</td>
-        <td>
-          <button class="btn" data-id="${r.id}" data-next="${toggleTo}">
-            Mark ${toggleTo}
-          </button>
+        <td>${escapeHtml(fmtDate(r.created_at))}</td>
+        <td style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn" data-action="toggle" data-id="${r.id}" data-next="${toggleTo}">Mark ${escapeHtml(toggleTo)}</button>
+          <button class="btn" data-action="edit" data-id="${r.id}">Edit</button>
         </td>
       </tr>
     `;
   }).join("");
 
-  // attach listeners
-  reportBody.querySelectorAll("button[data-id]").forEach(btn => {
+  reportBody.querySelectorAll("button[data-action]").forEach(btn => {
     btn.addEventListener("click", async () => {
-      const id = Number(btn.getAttribute("data-id"));
-      const next = btn.getAttribute("data-next");
-      const u = await window.api.updateStatus({ id, status: next });
-      if (!u.ok) {
-        reportMsg.textContent = "Update failed.";
-        return;
+      const id = btn.getAttribute("data-id");
+      const action = btn.getAttribute("data-action");
+
+      if (action === "toggle") {
+        const next = btn.getAttribute("data-next");
+        const u = await window.api.updateStatus({ id: Number(id), status: next });
+        if (!u.ok) reportMsg.textContent = "Update failed.";
+        await loadReport();
       }
-      await loadReport();
+
+      if (action === "edit") {
+        openEditModal(id);
+      }
     });
   });
 }
 
 btnLoad.addEventListener("click", loadReport);
 
-btnExport.addEventListener("click", async () => {
+btnExportXlsx.addEventListener("click", async () => {
   const monthYYYYMM = monthToYYYYMM(monthPick.value);
-  if (!monthYYYYMM) {
-    reportMsg.textContent = "Select a month to export.";
-    return;
-  }
-  const res = await window.api.exportCsv({
+  if (!monthYYYYMM) return (reportMsg.textContent = "Select a month to export.");
+
+  const res = await window.api.exportXlsx({
     monthYYYYMM,
     status: statusPick.value,
     location: locationPick.value
   });
+
   reportMsg.textContent = res.ok ? `Exported: ${res.filePath}` : (res.message || "Export failed");
 });
 
-// default month = current month
+btnExportPdf.addEventListener("click", async () => {
+  const monthYYYYMM = monthToYYYYMM(monthPick.value);
+  if (!monthYYYYMM) return (reportMsg.textContent = "Select a month to export.");
+
+  const res = await window.api.exportPdf({
+    monthYYYYMM,
+    status: statusPick.value,
+    location: locationPick.value
+  });
+
+  reportMsg.textContent = res.ok ? `Exported: ${res.filePath}` : (res.message || "Export failed");
+});
+
+// ---------------- Edit Modal ----------------
+const modal = $("modal");
+const btnCloseModal = $("btnCloseModal");
+const editForm = $("editForm");
+const editMsg = $("editMsg");
+const editComplaintNo = $("editComplaintNo");
+
+function openEditModal(id) {
+  editMsg.textContent = "";
+  const r = lastRowsById.get(String(id));
+  if (!r) return;
+
+  editComplaintNo.textContent = r.complaint_no;
+
+  editForm.elements["id"].value = r.id;
+  editForm.elements["name"].value = r.name;
+  editForm.elements["mobile"].value = r.mobile;
+  editForm.elements["product"].value = r.product;
+  editForm.elements["serial_number"].value = r.serial_number;
+  editForm.elements["status"].value = r.status;
+  editForm.elements["problem"].value = r.problem || "";
+
+  modal.classList.remove("hidden");
+}
+
+function closeEditModal() {
+  modal.classList.add("hidden");
+}
+
+btnCloseModal.addEventListener("click", closeEditModal);
+modal.addEventListener("click", (e) => {
+  if (e.target === modal) closeEditModal();
+});
+
+editForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  editMsg.textContent = "Saving...";
+
+  const fd = new FormData(editForm);
+  const payload = Object.fromEntries(fd.entries());
+  payload.id = Number(payload.id);
+
+  const res = await window.api.updateComplaint(payload);
+  if (!res.ok) {
+    editMsg.textContent = res.message || "Failed to save";
+    return;
+  }
+
+  editMsg.textContent = "Saved.";
+  await loadReport();
+  closeEditModal();
+});
+
+// Default month = current month
 (function initMonth() {
   const d = new Date();
   const yyyy = d.getFullYear();
