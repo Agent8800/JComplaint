@@ -26,6 +26,7 @@
     "files": [
       "**/*"
     ],
+    "publish": "never",
     "win": {
       "target": [
         "nsis"
