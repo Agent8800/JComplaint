@@ -1,0 +1,124 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self';">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Complaint Register</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">JComplaint Register</div>
+      <nav class="tabs">
+        <button id="tabRegister" class="tab tab--active">Register</button>
+        <button id="tabReports" class="tab">Reports</button>
+      </nav>
+    </header>
+
+    <main class="content">
+      <section id="viewRegister" class="card">
+        <h1>New Complaint</h1>
+
+        <form id="formComplaint" class="form">
+          <div class="grid">
+            <label>
+              <span>Name</span>
+              <input name="name" required autocomplete="off" />
+            </label>
+
+            <label>
+              <span>Mobile</span>
+              <input name="mobile" required autocomplete="off" inputmode="numeric" />
+            </label>
+
+            <label>
+              <span>Location</span>
+              <input name="location" required autocomplete="off" placeholder="e.g. Delhi" />
+            </label>
+
+            <label>
+              <span>Department</span>
+              <input name="department" required autocomplete="off" placeholder="e.g. Service" />
+            </label>
+
+            <label>
+              <span>Product</span>
+              <input name="product" required autocomplete="off" />
+            </label>
+
+            <label>
+              <span>Serial Number</span>
+              <input name="serial_number" required autocomplete="off" />
+            </label>
+          </div>
+
+          <div class="actions">
+            <button type="submit" class="btn btn--primary">Save Complaint</button>
+            <div id="saveMsg" class="msg"></div>
+          </div>
+
+          <div class="hint">
+            Complaint No format: <code>JIPL/DTCYYYYMMDD/LOCATION/0001</code> (auto-generated)
+          </div>
+        </form>
+      </section>
+
+      <section id="viewReports" class="card hidden">
+        <h1>Monthly Report</h1>
+
+        <div class="filters">
+          <label>
+            <span>Month</span>
+            <input id="monthPick" type="month" />
+          </label>
+
+          <label>
+            <span>Status</span>
+            <select id="statusPick">
+              <option value="">All</option>
+              <option value="Pending">Pending</option>
+              <option value="Complete">Complete</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Location (optional)</span>
+            <input id="locationPick" placeholder="e.g. Delhi" />
+          </label>
+
+          <button id="btnLoad" class="btn">Load</button>
+          <button id="btnExport" class="btn">Export CSV</button>
+        </div>
+
+        <div class="summary" id="summary"></div>
+
+        <div class="tableWrap">
+          <table class="table" id="reportTable">
+            <thead>
+              <tr>
+                <th>Complaint No</th>
+                <th>Name</th>
+                <th>Mobile</th>
+                <th>Location</th>
+                <th>Department</th>
+                <th>Product</th>
+                <th>Serial</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="reportBody"></tbody>
+          </table>
+        </div>
+
+        <div id="reportMsg" class="msg"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="./renderer.js"></script>
+</body>
+</html>
