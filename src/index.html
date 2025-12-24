@@ -2,198 +2,87 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self';">
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>JComplaint Register</title>
-  <link rel="stylesheet" href="./styles.css">
+  <title>JIPL Complaint Register</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div class="app">
     <header class="topbar">
-      <div class="brand">
-        <div class="brand__title">JComplaint Register</div>
-        <div class="brand__sub">TECHNOLOGY BEYOND COMPARISON</div>
-      </div>
-
-      <nav class="tabs">
-        <button id="tabRegister" class="tab tab--active">Register</button>
-        <button id="tabReports" class="tab">Reports</button>
-      </nav>
+      <h1>JIPL Complaint Register</h1>
     </header>
 
-    <main class="content">
-      <section id="viewRegister" class="card">
-        <div class="cardHead">
-          <h1>New Complaint</h1>
-          <div class="hint">
-            Format: <code>JIPL/LOCATION/YYYYMMDD/DEPARTMENT/0001</code> (auto-generated)
-          </div>
+    <div class="tabs">
+      <button class="tab active" data-tab="new">New Complaint</button>
+      <button class="tab" data-tab="list">Complaints</button>
+      <button class="tab" data-tab="report">Monthly Report</button>
+    </div>
+
+    <section id="new" class="panel active">
+      <div class="card">
+        <h2>Register New Complaint</h2>
+        <div class="grid">
+          <label>Name *</label><input id="name"/>
+          <label>Mobile *</label><input id="mobile"/>
+          <label>Location *</label><input id="location"/>
+          <label>Department *</label><input id="department"/>
+          <label>Product *</label><input id="product"/>
+          <label>Serial Number *</label><input id="serial_no"/>
+          <label>Complaint Details</label><textarea id="details"></textarea>
         </div>
-
-        <form id="formComplaint" class="form">
-          <div class="grid">
-            <label>
-              <span>Name</span>
-              <input name="name" required autocomplete="off" />
-            </label>
-
-            <label>
-              <span>Mobile</span>
-              <input name="mobile" required autocomplete="off" inputmode="numeric" />
-            </label>
-
-            <label>
-              <span>Location</span>
-              <input name="location" required autocomplete="off" placeholder="e.g. Delhi" />
-            </label>
-
-            <label>
-              <span>Department</span>
-              <input name="department" required autocomplete="off" placeholder="e.g. Service" />
-            </label>
-
-            <label>
-              <span>Product</span>
-              <input name="product" required autocomplete="off" />
-            </label>
-
-            <label>
-              <span>Serial Number</span>
-              <input name="serial_number" required autocomplete="off" />
-            </label>
-
-            <label class="span-3">
-              <span>Problem</span>
-              <textarea name="problem" required rows="3" placeholder="Write the complaint problem..."></textarea>
-            </label>
-          </div>
-
-          <div class="actions">
-            <button type="submit" class="btn btn--primary">Save Complaint</button>
-            <div id="saveMsg" class="msg"></div>
-          </div>
-        </form>
-      </section>
-
-      <section id="viewReports" class="card hidden">
-        <div class="cardHead">
-          <h1>Monthly Report</h1>
-          <div id="summary" class="summary"></div>
+        <div class="actions">
+          <button id="saveNew" class="primary">Save Complaint</button>
         </div>
+        <p class="hint">Complaint No format: <b>JIPL/LOCATION/YYYYMMDD/DEPARTMENT/0001</b> (auto)</p>
+      </div>
+    </section>
 
+    <section id="list" class="panel">
+      <div class="card">
+        <h2>Complaints</h2>
         <div class="filters">
-          <label>
-            <span>Month</span>
-            <input id="monthPick" type="month" />
-          </label>
-
-          <label>
-            <span>Status</span>
-            <select id="statusPick">
-              <option value="">All</option>
-              <option value="Pending">Pending</option>
-              <option value="Complete">Complete</option>
-            </select>
-          </label>
-
-          <label>
-            <span>Location (optional)</span>
-            <input id="locationPick" placeholder="e.g. Delhi" />
-          </label>
-
-          <button id="btnLoad" class="btn">Load</button>
-          <button id="btnExportXlsx" class="btn">Export Excel</button>
-          <button id="btnExportPdf" class="btn">Export PDF</button>
+          <select id="f_status">
+            <option>All</option><option>Pending</option><option>Completed</option>
+          </select>
+          <input id="f_from" type="date"/>
+          <input id="f_to" type="date"/>
+          <input id="f_search" placeholder="Search..." />
+          <button id="apply" class="primary">Apply</button>
         </div>
 
         <div class="tableWrap">
-          <table class="table" id="reportTable">
-            <thead>
-              <tr>
-                <th>Complaint No</th>
-                <th>Name</th>
-                <th>Mobile</th>
-                <th>Location</th>
-                <th>Department</th>
-                <th>Product</th>
-                <th>Serial</th>
-                <th>Problem</th>
-                <th>Status</th>
-                <th>Created</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="reportBody"></tbody>
-          </table>
-        </div>
-
-        <div id="reportMsg" class="msg"></div>
-      </section>
-    </main>
-  </div>
-
-  <!-- Edit Modal -->
-  <div id="modal" class="modal hidden">
-    <div class="modal__panel">
-      <div class="modal__head">
-        <div>
-          <div class="modal__title">Edit Complaint</div>
-          <div id="editComplaintNo" class="modal__sub"></div>
-        </div>
-        <button id="btnCloseModal" class="btn btn--ghost">Close</button>
-      </div>
-
-      <form id="editForm" class="form">
-        <input type="hidden" name="id" />
-
-        <div class="grid grid--2">
-          <label>
-            <span>Name</span>
-            <input name="name" required />
-          </label>
-
-          <label>
-            <span>Mobile</span>
-            <input name="mobile" required inputmode="numeric" />
-          </label>
-
-          <label>
-            <span>Product</span>
-            <input name="product" required />
-          </label>
-
-          <label>
-            <span>Serial Number</span>
-            <input name="serial_number" required />
-          </label>
-
-          <label>
-            <span>Status</span>
-            <select name="status">
-              <option value="Pending">Pending</option>
-              <option value="Complete">Complete</option>
-            </select>
-          </label>
-
-          <div class="mutedBox">
-            <div class="mutedBox__title">Locked fields</div>
-            <div class="mutedBox__text">Location/Department & Complaint No stay fixed to avoid numbering conflicts.</div>
-          </div>
-
-          <label class="span-2">
-            <span>Problem</span>
-            <textarea name="problem" required rows="3"></textarea>
-          </label>
+          <table id="tbl"></table>
         </div>
 
         <div class="actions">
-          <button type="submit" class="btn btn--primary">Save Changes</button>
-          <div id="editMsg" class="msg"></div>
+          <button id="edit" class="primary">Edit</button>
+          <button id="toggle">Toggle Pending/Completed</button>
+          <button id="expXlsx">Export Excel</button>
+          <button id="expPdf">Export PDF</button>
         </div>
-      </form>
-    </div>
+      </div>
+    </section>
+
+    <section id="report" class="panel">
+      <div class="card">
+        <h2>Monthly Report</h2>
+        <div class="filters">
+          <select id="r_month"></select>
+          <input id="r_year" type="number" min="2000" max="2100"/>
+          <select id="r_status">
+            <option>All</option><option>Pending</option><option>Completed</option>
+          </select>
+          <button id="gen" class="primary">Generate</button>
+          <button id="rXlsx">Export Excel</button>
+          <button id="rPdf">Export PDF</button>
+        </div>
+        <div id="summary" class="summary"></div>
+        <div class="tableWrap">
+          <table id="rtbl"></table>
+        </div>
+      </div>
+    </section>
   </div>
 
-  <script src="./renderer.js"></script>
+  <script src="renderer.js"></script>
 </body>
 </html>
