@@ -6,9 +6,10 @@
   "author": "Your Company",
   "license": "MIT",
   "scripts": {
-    "start": "electron .",
-    "dist": "electron-builder --win --x64"
-  },
+  "start": "electron .",
+  "build": "electron-builder --win --x64",
+  "dist": "electron-builder --win --x64"
+},
   "dependencies": {
     "better-sqlite3": "^11.7.0"
   },
