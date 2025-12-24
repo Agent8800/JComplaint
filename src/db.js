@@ -18,8 +18,10 @@ function initDb(userDataPath) {
       location TEXT NOT NULL,
       location_code TEXT NOT NULL,
       department TEXT NOT NULL,
+      department_code TEXT,
       product TEXT NOT NULL,
       serial_number TEXT NOT NULL,
+      problem TEXT,
 
       status TEXT NOT NULL CHECK(status IN ('Pending','Complete')),
       created_at TEXT NOT NULL,
@@ -27,16 +29,31 @@ function initDb(userDataPath) {
 
       date_key TEXT NOT NULL,      -- YYYYMMDD
       month_key TEXT NOT NULL,     -- YYYYMM
-      seq INTEGER NOT NULL         -- per location_code + date_key
+      seq INTEGER NOT NULL         -- per location_code + department_code + date_key
     );
 
     CREATE INDEX IF NOT EXISTS idx_complaints_month ON complaints(month_key);
     CREATE INDEX IF NOT EXISTS idx_complaints_status ON complaints(status);
-    CREATE INDEX IF NOT EXISTS idx_complaints_locdate ON complaints(location_code, date_key);
+    CREATE INDEX IF NOT EXISTS idx_complaints_locdeptdate ON complaints(location_code, department_code, date_key);
+  `);
+
+  // Migrations for older DBs
+  const cols = db.prepare("PRAGMA table_info(complaints)").all().map(r => r.name);
+
+  if (!cols.includes("department_code")) {
+    db.exec(`ALTER TABLE complaints ADD COLUMN department_code TEXT;`);
+  }
+  if (!cols.includes("problem")) {
+    db.exec(`ALTER TABLE complaints ADD COLUMN problem TEXT;`);
+  }
+
+  db.exec(`
+    UPDATE complaints
+    SET department_code = UPPER(REPLACE(REPLACE(TRIM(department), ' ', ''), '/', ''))
+    WHERE department_code IS NULL OR TRIM(department_code) = '';
   `);
 }
 
-// Helpers
 function pad(n, width) {
   const s = String(n);
   return s.length >= width ? s : "0".repeat(width - s.length) + s;
@@ -59,58 +76,71 @@ function monthKeyYYYYMM(d = new Date()) {
   return `${y}${m}`;
 }
 
-function toLocationCode(location) {
-  const cleaned = (location || "")
+function toCode(value, fallback) {
+  const cleaned = (value || "")
     .trim()
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, "");
-  return cleaned.length ? cleaned.slice(0, 12) : "LOC";
+  return cleaned.length ? cleaned.slice(0, 12) : fallback;
 }
 
-function validate(payload) {
-  const required = ["name", "mobile", "location", "department", "product", "serial_number"];
+function validateCreate(payload) {
+  const required = ["name", "mobile", "location", "department", "product", "serial_number", "problem"];
   for (const k of required) {
-    if (!payload[k] || String(payload[k]).trim().length === 0) {
-      return `Missing: ${k}`;
-    }
+    if (!payload[k] || String(payload[k]).trim().length === 0) return `Missing: ${k}`;
   }
   const mobile = String(payload.mobile).replace(/\s+/g, "");
   if (!/^[0-9]{7,15}$/.test(mobile)) return "Mobile must be 7–15 digits";
   return null;
 }
 
-function nextSeq({ location_code, date_key }) {
-  const row = db
-    .prepare(`SELECT MAX(seq) AS maxSeq FROM complaints WHERE location_code = ? AND date_key = ?`)
-    .get(location_code, date_key);
+function validateEdit(payload) {
+  if (!payload.id) return "Missing id";
+  if (payload.mobile) {
+    const mobile = String(payload.mobile).replace(/\s+/g, "");
+    if (!/^[0-9]{7,15}$/.test(mobile)) return "Mobile must be 7–15 digits";
+  }
+  if (payload.status && !["Pending", "Complete"].includes(payload.status)) return "Invalid status";
+  if (payload.problem != null && String(payload.problem).trim().length === 0) return "Problem cannot be empty";
+  return null;
+}
+
+function nextSeq({ location_code, department_code, date_key }) {
+  const row = db.prepare(`
+    SELECT MAX(seq) AS maxSeq
+    FROM complaints
+    WHERE location_code = ? AND department_code = ? AND date_key = ?
+  `).get(location_code, department_code, date_key);
+
   const maxSeq = row?.maxSeq || 0;
   return maxSeq + 1;
 }
 
-function buildComplaintNo({ date_key, location_code, seq }) {
-  // As requested: JIPL/DTC + current date + /Location/ + serial
-  // Example: JIPL/DTC20251224/DELHI/0001
-  return `JIPL/DTC${date_key}/${location_code}/${pad(seq, 4)}`;
+// REQUIRED FORMAT: JIPL/LOCATION/YYYYMMDD/DEPARTMENT/0001
+function buildComplaintNo({ location_code, date_key, department_code, seq }) {
+  return `JIPL/${location_code}/${date_key}/${department_code}/${pad(seq, 4)}`;
 }
 
-// CRUD
 function createComplaint(payload) {
-  const err = validate(payload);
+  const err = validateCreate(payload);
   if (err) return { ok: false, message: err };
 
   const created = new Date();
   const date_key = dateKeyYYYYMMDD(created);
   const month_key = monthKeyYYYYMM(created);
-  const location_code = toLocationCode(payload.location);
-  const seq = nextSeq({ location_code, date_key });
-  const complaint_no = buildComplaintNo({ date_key, location_code, seq });
+
+  const location_code = toCode(payload.location, "LOC");
+  const department_code = toCode(payload.department, "DEPT");
+
+  const seq = nextSeq({ location_code, department_code, date_key });
+  const complaint_no = buildComplaintNo({ location_code, date_key, department_code, seq });
 
   const stmt = db.prepare(`
     INSERT INTO complaints
-      (complaint_no, name, mobile, location, location_code, department, product, serial_number,
+      (complaint_no, name, mobile, location, location_code, department, department_code, product, serial_number, problem,
        status, created_at, completed_at, date_key, month_key, seq)
     VALUES
-      (@complaint_no, @name, @mobile, @location, @location_code, @department, @product, @serial_number,
+      (@complaint_no, @name, @mobile, @location, @location_code, @department, @department_code, @product, @serial_number, @problem,
        @status, @created_at, @completed_at, @date_key, @month_key, @seq)
   `);
 
@@ -122,8 +152,10 @@ function createComplaint(payload) {
       location: String(payload.location).trim(),
       location_code,
       department: String(payload.department).trim(),
+      department_code,
       product: String(payload.product).trim(),
       serial_number: String(payload.serial_number).trim(),
+      problem: String(payload.problem).trim(),
       status: "Pending",
       created_at: nowIso(),
       completed_at: null,
@@ -148,13 +180,13 @@ function listComplaintsByMonth({ monthYYYYMM, status, location }) {
   }
 
   if (location && String(location).trim().length) {
-    const code = toLocationCode(location);
+    const code = toCode(location, "LOC");
     where.push("location_code = ?");
     params.push(code);
   }
 
   const rows = db.prepare(`
-    SELECT id, complaint_no, name, mobile, location, department, product, serial_number,
+    SELECT id, complaint_no, name, mobile, location, department, product, serial_number, problem,
            status, created_at, completed_at
     FROM complaints
     WHERE ${where.join(" AND ")}
@@ -182,38 +214,46 @@ function updateStatus({ id, status }) {
   return { ok: info.changes === 1 };
 }
 
-function escapeCsv(v) {
-  const s = v == null ? "" : String(v);
-  if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-  return s;
-}
+// Edit complaint (complaint_no / location / department stay locked)
+function updateComplaint(payload) {
+  const err = validateEdit(payload);
+  if (err) return { ok: false, message: err };
 
-function exportMonthToCsv({ monthYYYYMM, status, location }) {
-  const result = listComplaintsByMonth({ monthYYYYMM, status, location });
-  if (!result.ok) return "error\n";
+  const current = db.prepare(`SELECT * FROM complaints WHERE id = ?`).get(payload.id);
+  if (!current) return { ok: false, message: "Not found" };
 
-  const header = [
-    "ComplaintNo","Name","Mobile","Location","Department","Product","SerialNumber",
-    "Status","CreatedAt","CompletedAt"
-  ];
+  const nextStatus = payload.status ?? current.status;
+  const completed_at = nextStatus === "Complete" ? (current.completed_at || nowIso()) : null;
 
-  const lines = [header.join(",")];
+  const info = db.prepare(`
+    UPDATE complaints
+    SET
+      name = ?,
+      mobile = ?,
+      product = ?,
+      serial_number = ?,
+      problem = ?,
+      status = ?,
+      completed_at = ?
+    WHERE id = ?
+  `).run(
+    String(payload.name ?? current.name).trim(),
+    String(payload.mobile ?? current.mobile).replace(/\s+/g, ""),
+    String(payload.product ?? current.product).trim(),
+    String(payload.serial_number ?? current.serial_number).trim(),
+    String(payload.problem ?? current.problem ?? "").trim(),
+    nextStatus,
+    completed_at,
+    payload.id
+  );
 
-  for (const r of result.rows) {
-    lines.push([
-      r.complaint_no, r.name, r.mobile, r.location, r.department, r.product, r.serial_number,
-      r.status, r.created_at, r.completed_at || ""
-    ].map(escapeCsv).join(","));
-  }
-
-  return lines.join("\n");
+  return { ok: info.changes === 1 };
 }
 
 module.exports = {
-  db: () => db,
   initDb,
   createComplaint,
   listComplaintsByMonth,
   updateStatus,
-  exportMonthToCsv
+  updateComplaint
 };
