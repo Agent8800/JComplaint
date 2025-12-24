@@ -1,17 +1,19 @@
 {
   "name": "Jcomplaint-register",
-  "version": "1.0.0",
-  "description": "Complaint Register + Monthly Reports (Pending/Complete)",
+  "version": "1.2.0",
+  "description": "Complaint Register + Monthly Reports (Pending/Complete) - Light UI",
   "main": "main.js",
-  "author": "Your Company",
+  "author": "jayasan.com",
   "license": "MIT",
   "scripts": {
-  "start": "electron .",
-  "build": "electron-builder --win --x64",
-  "dist": "electron-builder --win --x64"
-},
+    "start": "electron .",
+    "build": "electron-builder --win --x64",
+    "dist": "electron-builder --win --x64"
+  },
   "dependencies": {
-    "better-sqlite3": "^11.7.0"
+    "better-sqlite3": "^11.7.0",
+    "exceljs": "^4.4.0",
+    "pdfkit": "^0.17.1"
   },
   "devDependencies": {
     "electron": "^30.0.0",
@@ -29,7 +31,8 @@
     "win": {
       "target": [
         "nsis"
-      ]
+      ],
+      "icon": "assets/icon.ico"
     },
     "nsis": {
       "oneClick": false,
