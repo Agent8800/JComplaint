@@ -1,237 +1,172 @@
-const $ = (id) => document.getElementById(id);
+const HEADERS = ["Complaint No","Created At","Name","Mobile","Location","Department","Product","Serial No","Status","Completed At"];
 
-const tabRegister = $("tabRegister");
-const tabReports = $("tabReports");
-const viewRegister = $("viewRegister");
-const viewReports = $("viewReports");
+const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
-function show(view) {
-  const isReg = view === "register";
-  viewRegister.classList.toggle("hidden", !isReg);
-  viewReports.classList.toggle("hidden", isReg);
-  tabRegister.classList.toggle("tab--active", isReg);
-  tabReports.classList.toggle("tab--active", !isReg);
+let selectedNo = null;
+let currentList = [];
+let currentReport = [];
+
+function qs(id){ return document.getElementById(id); }
+
+function setTab(name){
+  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+  document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.id === name));
 }
 
-tabRegister.addEventListener("click", () => show("register"));
-tabReports.addEventListener("click", () => show("reports"));
+document.querySelectorAll(".tab").forEach(b => b.addEventListener("click", () => setTab(b.dataset.tab)));
 
-function escapeHtml(s) {
-  return String(s ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
+function renderTable(el, items){
+  selectedNo = null;
+  el.innerHTML = `
+    <thead><tr>${HEADERS.map(h => `<th>${h}</th>`).join("")}</tr></thead>
+    <tbody>
+      ${items.map(x => `
+        <tr data-no="${x.complaint_no}">
+          <td>${x.complaint_no}</td>
+          <td>${x.created_at}</td>
+          <td>${x.name}</td>
+          <td>${x.mobile}</td>
+          <td>${x.location}</td>
+          <td>${x.department}</td>
+          <td>${x.product}</td>
+          <td>${x.serial_no}</td>
+          <td>${x.status}</td>
+          <td>${x.completed_at || ""}</td>
+        </tr>`).join("")}
+    </tbody>
+  `;
 
-function monthToYYYYMM(value) {
-  if (!value) return "";
-  return value.replace("-", "");
-}
-
-function fmtDate(iso) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString();
-}
-
-function badge(status) {
-  const cls = status === "Complete" ? "badge badge--complete" : "badge badge--pending";
-  return `<span class="${cls}">${escapeHtml(status)}</span>`;
-}
-
-// ---------------- Register ----------------
-const form = $("formComplaint");
-const saveMsg = $("saveMsg");
-
-form.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  saveMsg.textContent = "Saving...";
-
-  const fd = new FormData(form);
-  const payload = Object.fromEntries(fd.entries());
-
-  const res = await window.api.createComplaint(payload);
-  if (!res.ok) {
-    saveMsg.textContent = res.message || "Failed to save";
-    return;
-  }
-
-  saveMsg.textContent = `Saved: ${res.complaint_no}`;
-  form.reset();
-});
-
-// ---------------- Reports ----------------
-const monthPick = $("monthPick");
-const statusPick = $("statusPick");
-const locationPick = $("locationPick");
-const btnLoad = $("btnLoad");
-const btnExportXlsx = $("btnExportXlsx");
-const btnExportPdf = $("btnExportPdf");
-const summary = $("summary");
-const reportBody = $("reportBody");
-const reportMsg = $("reportMsg");
-
-let lastRowsById = new Map();
-
-async function loadReport() {
-  reportMsg.textContent = "";
-  reportBody.innerHTML = "";
-  summary.textContent = "";
-
-  const monthYYYYMM = monthToYYYYMM(monthPick.value);
-  if (!monthYYYYMM) {
-    reportMsg.textContent = "Select a month.";
-    return;
-  }
-
-  const res = await window.api.listByMonth({
-    monthYYYYMM,
-    status: statusPick.value,
-    location: locationPick.value
-  });
-
-  if (!res.ok) {
-    reportMsg.textContent = res.message || "Failed to load";
-    return;
-  }
-
-  lastRowsById = new Map(res.rows.map(r => [String(r.id), r]));
-
-  summary.textContent =
-    `Total: ${res.summary.total}   |   Pending: ${res.summary.pending}   |   Complete: ${res.summary.complete}`;
-
-  reportBody.innerHTML = res.rows.map(r => {
-    const toggleTo = r.status === "Pending" ? "Complete" : "Pending";
-    const problemFull = r.problem || "";
-    const problemShort = problemFull.length > 60 ? problemFull.slice(0, 60) + "..." : problemFull;
-
-    return `
-      <tr>
-        <td>${escapeHtml(r.complaint_no)}</td>
-        <td>${escapeHtml(r.name)}</td>
-        <td>${escapeHtml(r.mobile)}</td>
-        <td>${escapeHtml(r.location)}</td>
-        <td>${escapeHtml(r.department)}</td>
-        <td>${escapeHtml(r.product)}</td>
-        <td>${escapeHtml(r.serial_number)}</td>
-        <td title="${escapeHtml(problemFull)}">${escapeHtml(problemShort)}</td>
-        <td>${badge(r.status)}</td>
-        <td>${escapeHtml(fmtDate(r.created_at))}</td>
-        <td style="display:flex; gap:8px; flex-wrap:wrap;">
-          <button class="btn" data-action="toggle" data-id="${r.id}" data-next="${toggleTo}">Mark ${escapeHtml(toggleTo)}</button>
-          <button class="btn" data-action="edit" data-id="${r.id}">Edit</button>
-        </td>
-      </tr>
-    `;
-  }).join("");
-
-  reportBody.querySelectorAll("button[data-action]").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      const id = btn.getAttribute("data-id");
-      const action = btn.getAttribute("data-action");
-
-      if (action === "toggle") {
-        const next = btn.getAttribute("data-next");
-        const u = await window.api.updateStatus({ id: Number(id), status: next });
-        if (!u.ok) reportMsg.textContent = "Update failed.";
-        await loadReport();
-      }
-
-      if (action === "edit") {
-        openEditModal(id);
-      }
+  el.querySelectorAll("tbody tr").forEach(tr => {
+    tr.addEventListener("click", () => {
+      el.querySelectorAll("tr").forEach(r => r.classList.remove("selected"));
+      tr.classList.add("selected");
+      selectedNo = tr.dataset.no;
     });
   });
 }
 
-btnLoad.addEventListener("click", loadReport);
-
-btnExportXlsx.addEventListener("click", async () => {
-  const monthYYYYMM = monthToYYYYMM(monthPick.value);
-  if (!monthYYYYMM) return (reportMsg.textContent = "Select a month to export.");
-
-  const res = await window.api.exportXlsx({
-    monthYYYYMM,
-    status: statusPick.value,
-    location: locationPick.value
-  });
-
-  reportMsg.textContent = res.ok ? `Exported: ${res.filePath}` : (res.message || "Export failed");
-});
-
-btnExportPdf.addEventListener("click", async () => {
-  const monthYYYYMM = monthToYYYYMM(monthPick.value);
-  if (!monthYYYYMM) return (reportMsg.textContent = "Select a month to export.");
-
-  const res = await window.api.exportPdf({
-    monthYYYYMM,
-    status: statusPick.value,
-    location: locationPick.value
-  });
-
-  reportMsg.textContent = res.ok ? `Exported: ${res.filePath}` : (res.message || "Export failed");
-});
-
-// ---------------- Edit Modal ----------------
-const modal = $("modal");
-const btnCloseModal = $("btnCloseModal");
-const editForm = $("editForm");
-const editMsg = $("editMsg");
-const editComplaintNo = $("editComplaintNo");
-
-function openEditModal(id) {
-  editMsg.textContent = "";
-  const r = lastRowsById.get(String(id));
-  if (!r) return;
-
-  editComplaintNo.textContent = r.complaint_no;
-
-  editForm.elements["id"].value = r.id;
-  editForm.elements["name"].value = r.name;
-  editForm.elements["mobile"].value = r.mobile;
-  editForm.elements["product"].value = r.product;
-  editForm.elements["serial_number"].value = r.serial_number;
-  editForm.elements["status"].value = r.status;
-  editForm.elements["problem"].value = r.problem || "";
-
-  modal.classList.remove("hidden");
+async function refreshList(){
+  const status = qs("f_status").value;
+  const from = qs("f_from").value || null;
+  const to = qs("f_to").value || null;
+  const search = qs("f_search").value || "";
+  currentList = await window.api.listComplaints({ status, from, to, search });
+  renderTable(qs("tbl"), currentList);
 }
 
-function closeEditModal() {
-  modal.classList.add("hidden");
+async function refreshReport(){
+  const year = parseInt(qs("r_year").value, 10);
+  const month = qs("r_month").selectedIndex + 1;
+  const status = qs("r_status").value;
+  const res = await window.api.monthlyReport({ year, month, status });
+  currentReport = res.items;
+
+  qs("summary").textContent =
+    `Summary ${year}-${String(month).padStart(2,"0")}: Pending=${res.pending} Completed=${res.completed} Total=${res.items.length}`;
+
+  renderTable(qs("rtbl"), currentReport);
 }
 
-btnCloseModal.addEventListener("click", closeEditModal);
-modal.addEventListener("click", (e) => {
-  if (e.target === modal) closeEditModal();
+function rowsForExport(items){
+  return items.map(x => [
+    x.complaint_no, x.created_at, x.name, x.mobile, x.location,
+    x.department, x.product, x.serial_no, x.status, x.completed_at || ""
+  ]);
+}
+
+qs("saveNew").addEventListener("click", async () => {
+  const payload = {
+    name: qs("name").value,
+    mobile: qs("mobile").value,
+    location: qs("location").value,
+    department: qs("department").value,
+    product: qs("product").value,
+    serial_no: qs("serial_no").value,
+    details: qs("details").value
+  };
+  const res = await window.api.createComplaint(payload);
+  alert("Saved.\nComplaint No:\n" + res.complaint_no);
+
+  ["name","mobile","location","department","product","serial_no","details"].forEach(id => qs(id).value = "");
+  await refreshList();
+  await refreshReport();
 });
 
-editForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  editMsg.textContent = "Saving...";
+qs("apply").addEventListener("click", refreshList);
 
-  const fd = new FormData(editForm);
-  const payload = Object.fromEntries(fd.entries());
-  payload.id = Number(payload.id);
+qs("toggle").addEventListener("click", async () => {
+  if (!selectedNo) return alert("Select a complaint row first.");
+  const item = currentList.find(x => x.complaint_no === selectedNo);
+  if (!item) return;
 
-  const res = await window.api.updateComplaint(payload);
-  if (!res.ok) {
-    editMsg.textContent = res.message || "Failed to save";
-    return;
-  }
+  const newStatus = item.status === "Pending" ? "Completed" : "Pending";
+  await window.api.updateComplaint({
+    ...item,
+    complaint_no: item.complaint_no,
+    status: newStatus
+  });
 
-  editMsg.textContent = "Saved.";
-  await loadReport();
-  closeEditModal();
+  await refreshList();
+  await refreshReport();
 });
 
-// Default month = current month
-(function initMonth() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  monthPick.value = `${yyyy}-${mm}`;
+qs("edit").addEventListener("click", async () => {
+  if (!selectedNo) return alert("Select a complaint row first.");
+  const item = currentList.find(x => x.complaint_no === selectedNo);
+  if (!item) return;
+
+  const name = prompt("Edit Name:", item.name);
+  if (name === null) return;
+  item.name = name.trim();
+
+  await window.api.updateComplaint(item);
+  await refreshList();
+  await refreshReport();
+});
+
+qs("expXlsx").addEventListener("click", async () => {
+  const rows = rowsForExport(currentList);
+  const res = await window.api.exportExcel({ rows, defaultName: "complaints_export" });
+  if (res.ok) alert("Excel exported:\n" + res.filePath);
+});
+qs("expPdf").addEventListener("click", async () => {
+  const rows = rowsForExport(currentList);
+  const res = await window.api.exportPdf({ rows, title: "Complaints Export", defaultName: "complaints_export" });
+  if (res.ok) alert("PDF exported:\n" + res.filePath);
+});
+
+qs("gen").addEventListener("click", refreshReport);
+qs("rXlsx").addEventListener("click", async () => {
+  const rows = rowsForExport(currentReport);
+  const res = await window.api.exportExcel({ rows, defaultName: "monthly_report" });
+  if (res.ok) alert("Excel exported:\n" + res.filePath);
+});
+qs("rPdf").addEventListener("click", async () => {
+  const rows = rowsForExport(currentReport);
+  const res = await window.api.exportPdf({ rows, title: "Monthly Report", defaultName: "monthly_report" });
+  if (res.ok) alert("PDF exported:\n" + res.filePath);
+});
+
+(function init(){
+  // Month dropdown
+  const m = qs("r_month");
+  months.forEach((x, i) => {
+    const opt = document.createElement("option");
+    opt.textContent = x;
+    opt.value = String(i+1);
+    m.appendChild(opt);
+  });
+
+  const now = new Date();
+  qs("r_month").selectedIndex = now.getMonth();
+  qs("r_year").value = String(now.getFullYear());
+
+  // default filters
+  const from = new Date(now);
+  from.setMonth(from.getMonth() - 1);
+  qs("f_from").value = from.toISOString().slice(0,10);
+  qs("f_to").value = now.toISOString().slice(0,10);
+
+  refreshList();
+  refreshReport();
 })();
