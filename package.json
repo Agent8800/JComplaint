@@ -1,43 +1,51 @@
 {
-  "name": "Jcomplaint-register",
-  "version": "1.2.0",
-  "description": "Complaint Register + Monthly Reports (Pending/Complete) - Light UI",
+  "name": "jipl-complaint-register",
+  "version": "1.0.0",
+  "description": "JIPL Complaint Register Desktop App",
   "main": "main.js",
-  "author": "jayasan.com",
+  "author": "JIPL",
   "license": "MIT",
+
   "scripts": {
     "start": "electron .",
     "build": "electron-builder --win --x64",
     "dist": "electron-builder --win --x64"
   },
-  "dependencies": {
-    "better-sqlite3": "^11.7.0",
-    "exceljs": "^4.4.0",
-    "pdfkit": "^0.17.1"
-  },
+
   "devDependencies": {
     "electron": "^30.0.0",
     "electron-builder": "^24.13.3"
   },
+
+  "dependencies": {
+    "better-sqlite3": "^9.4.0",
+    "exceljs": "^4.4.0",
+    "pdfkit": "^0.15.0"
+  },
+
   "build": {
-    "appId": "com.jayasan.complaintregister",
-    "productName": "Complaint Register",
+    "productName": "JIPL Complaint Register",
+    "appId": "com.jipl.complaintregister",
+
     "directories": {
       "output": "dist"
     },
+
     "files": [
       "**/*"
     ],
+
     "win": {
-      "target": [
-        "nsis"
-      ],
-      "icon": "assets/icon.ico"
+      "target": "nsis",
+      "icon": "assets/jipl.ico"
     },
+
     "nsis": {
       "oneClick": false,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "JIPL Complaint Register"
     }
   }
 }
